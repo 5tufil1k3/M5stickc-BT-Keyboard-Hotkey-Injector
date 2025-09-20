@@ -1,0 +1,142 @@
+#include <M5StickCPlus.h>
+#include <BleKeyboard.h>
+
+BleKeyboard bleKeyboard("M5StickCPlus", "M5Stack", 100);
+
+// Menu items (simplified)
+const char *systemItems[] = {
+  "Show Desktop",       // Win + D
+  "Task Manager",       // Ctrl + Shift + Esc
+  "Lock",               // Win + L
+  "Switch Apps",        // Ctrl + Alt + Tab
+  "Settings",           // Win + I
+  "Quick Settings",     // Win + A
+  "File Explorer",      // Win + E
+  "Quick Assist",       // Win + Ctrl + Q
+  "Refresh",            // F5
+  "Projector",          // Win + P
+  "Close Window",       // Alt + F4
+  "Rename",             // F2
+  "On-Screen KB",       // Win + Ctrl + O
+  "Widgets",            // Win + W
+  "Cast",               // Win + K
+  "Start Menu Win"      // Win
+};
+const int systemSize = sizeof(systemItems) / sizeof(systemItems[0]);
+
+int currentMenu = 0;
+
+// Action feedback timing
+const uint32_t ACTION_HIGHLIGHT_TIME = 500; // ms
+bool actionActive = false;
+uint32_t actionStartTime = 0;
+
+// -------------------- Display Helpers --------------------
+void showBT(bool connected) {
+  M5.Lcd.fillRect(0, 0, 50, 30, BLACK);
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.setCursor(0, 0);
+  M5.Lcd.setTextColor(connected ? BLUE : RED, BLACK);
+  M5.Lcd.print("BT");
+}
+
+void drawMenu() {
+  M5.Lcd.fillRect(0, 30, 240, 115, BLACK); // Clear menu area
+  M5.Lcd.setTextSize(1); // small font
+
+  for (int i = 0; i < systemSize; i++) {
+    int y = 40 + i * 10; // spacing
+
+    // Clear each row first
+    M5.Lcd.fillRect(0, y, 240, 10, BLACK);
+
+    if (i == currentMenu) {
+      if (actionActive) {
+        M5.Lcd.fillRect(0, y, 240, 10, GREEN);
+        M5.Lcd.setTextColor(BLACK, GREEN);
+      } else {
+        M5.Lcd.fillRect(0, y, 240, 10, YELLOW);
+        M5.Lcd.setTextColor(BLACK, YELLOW);
+      }
+    } else {
+      M5.Lcd.setTextColor(WHITE, BLACK);
+    }
+
+    M5.Lcd.setCursor(5, y);
+    M5.Lcd.print(systemItems[i]);
+  }
+}
+
+// -------------------- Shortcut Execution --------------------
+void executeShortcut(int index) {
+  switch(index) {
+    case 0:  bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press('d'); break; // Show Desktop
+    case 1:  bleKeyboard.press(KEY_LEFT_CTRL); bleKeyboard.press(KEY_LEFT_SHIFT); bleKeyboard.press(KEY_ESC); break; // Task Manager
+    case 2:  bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press('l'); break; // Lock
+    case 3:  bleKeyboard.press(KEY_LEFT_CTRL); bleKeyboard.press(KEY_LEFT_ALT); bleKeyboard.press(KEY_TAB); break; // Switch Apps
+    case 4:  bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press('i'); break; // Settings
+    case 5:  bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press('a'); break; // Quick Settings
+    case 6:  bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press('e'); break; // File Explorer
+    case 7:  bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press(KEY_LEFT_CTRL); bleKeyboard.press('q'); break; // Quick Assist
+    case 8:  bleKeyboard.write(KEY_F5); break; // Refresh
+    case 9:  bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press('p'); break; // Projector
+    case 10: bleKeyboard.press(KEY_LEFT_ALT); bleKeyboard.press(KEY_F4); break; // Close Window
+    case 11: bleKeyboard.write(KEY_F2); break; // Rename
+    case 12: bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press(KEY_LEFT_CTRL); bleKeyboard.press('o'); break; // On-Screen Keyboard
+    case 13: bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press('w'); break; // Widgets
+    case 14: bleKeyboard.press(KEY_LEFT_GUI); bleKeyboard.press('k'); break; // Cast
+    case 15: bleKeyboard.press(KEY_LEFT_GUI); break; // Start Menu Win
+  }
+  delay(50);
+  bleKeyboard.releaseAll();
+}
+
+// -------------------- Action Feedback --------------------
+void indicateAction() {
+  actionActive = true;
+  actionStartTime = millis();
+  drawMenu();
+}
+
+// -------------------- Setup --------------------
+void setup() {
+  Serial.begin(115200);
+  M5.begin();
+  M5.Lcd.fillScreen(BLACK);
+  bleKeyboard.begin();
+  showBT(bleKeyboard.isConnected());
+  drawMenu();
+}
+
+// -------------------- Loop --------------------
+void loop() {
+  M5.update();
+
+  // Update BT status if changed
+  static bool lastBt = false;
+  bool connected = bleKeyboard.isConnected();
+  if (connected != lastBt) {
+    lastBt = connected;
+    showBT(connected);
+  }
+
+  // Reset highlight after action duration
+  if (actionActive && (millis() - actionStartTime >= 500)) {
+    actionActive = false;
+    drawMenu();
+  }
+
+  // Execute selected shortcut
+  if (M5.BtnA.wasPressed()) {
+    executeShortcut(currentMenu);
+    indicateAction(); // green highlight feedback
+  }
+
+  // Scroll menu
+  if (M5.BtnB.wasPressed()) {
+    currentMenu = (currentMenu + 1) % systemSize;
+    drawMenu();
+  }
+
+  delay(20);
+}
